@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Localisation IP</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0d0f14;
+            color: #eee;
+            font-family: Arial, sans-serif;
+        }
+
+        header {
+            padding: 20px;
+            text-align: center;
+        }
+
+        #ipInput {
+            padding: 10px;
+            width: 250px;
+            border-radius: 6px;
+            border: none;
+            outline: none;
+            font-size: 16px;
+        }
+
+        #btnLocate {
+            padding: 10px 20px;
+            margin-left: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            background: #3a7bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        #map {
+            width: 100vw;
+            height: 70vh;
+        }
+
+        #info {
+            padding: 20px;
+            font-size: 15px;
+            background: #11141a;
+            border-top: 1px solid #222;
+        }
+
+        .label {
+            color: #3a7bff;
+            font-weight: bold;
+        }
+
+        #warning {
+            padding: 20px;
+            font-size: 14px;
+            opacity: 0.7;
+            background: #0b0d11;
+            border-top: 1px solid #222;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>Localisation d'une IP</h2>
+    <input id="ipInput" type="text" placeholder="Entrez une adresse IP">
+    <button id="btnLocate">Localiser</button>
+    <p id="status"></p>
+</header>
+
+<div id="map"></div>
+
+<div id="info"></div>
+
+<div id="warning">
+    ⚠️ <b>Important :</b> Les informations affichées ne sont pas toujours précises.<br>
+    Si la personne utilise un VPN, un proxy ou un réseau mobile, la localisation peut être totalement fausse.<br>
+    Très souvent, une adresse IP ne correspond pas à l’emplacement réel du PC.<br>
+    En général, les utilisateurs se trouvent dans un rayon d’environ <b>50 km</b>, mais ce n’est pas garanti.
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    let circleLayer = null;
+    let markerLayer = null;
+
+    const map = L.map('map').setView([48.8566, 2.3522], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    async function locateIP(ip) {
+        const status = document.getElementById("status");
+        const info = document.getElementById("info");
+
+        status.textContent = "Recherche en cours…";
+
+        try {
+            const res = await fetch(`https://ipapi.co/${ip}/json/`);
+            const data = await res.json();
+
+            if (!data.latitude || !data.longitude) {
+                status.textContent = "Impossible de trouver la localisation.";
+                return;
+            }
+
+            const lat = data.latitude;
+            const lon = data.longitude;
+
+            // Rayon réel fourni par l'API (km → m)
+            const accuracyKm = data.accuracy_radius || 50;
+            const accuracyMeters = accuracyKm * 1000;
+
+            status.textContent = `IP trouvée : ${data.ip}`;
+
+            // Nettoyer anciens éléments
+            if (circleLayer) map.removeLayer(circleLayer);
+            if (markerLayer) map.removeLayer(markerLayer);
+
+            // Cercle de précision
+            circleLayer = L.circle([lat, lon], {
+                radius: accuracyMeters,
+                color: "#3a7bff",
+                fillColor: "#3a7bff",
+                fillOpacity: 0.2
+            }).addTo(map);
+
+            // Point au centre
+            markerLayer = L.circleMarker([lat, lon], {
+                radius: 6,
+                color: "#fff",
+                fillColor: "#fff",
+                fillOpacity: 1
+            }).addTo(map);
+
+            // Centrer la carte
+            map.fitBounds(circleLayer.getBounds(), { padding: [20, 20] });
+
+            // Infos détaillées
+            info.innerHTML = `
+                <p><span class="label">IP :</span> ${data.ip}</p>
+                <p><span class="label">Ville :</span> ${data.city}</p>
+                <p><span class="label">Région :</span> ${data.region}</p>
+                <p><span class="label">Pays :</span> ${data.country_name}</p>
+                <p><span class="label">Latitude :</span> ${lat}</p>
+                <p><span class="label">Longitude :</span> ${lon}</p>
+                <p><span class="label">Fournisseur (ASN) :</span> ${data.org}</p>
+                <p><span class="label">Code postal :</span> ${data.postal}</p>
+                <p><span class="label">Fuseau horaire :</span> ${data.timezone}</p>
+            `;
+
+        } catch (e) {
+            status.textContent = "Erreur lors de la requête.";
+        }
+    }
+
+    document.getElementById("btnLocate").addEventListener("click", () => {
+        const ip = document.getElementById("ipInput").value.trim();
+        if (ip.length === 0) {
+            document.getElementById("status").textContent = "Veuillez entrer une IP.";
+            return;
+        }
+        locateIP(ip);
+    });
+</script>
+
+</body>
+</html>
